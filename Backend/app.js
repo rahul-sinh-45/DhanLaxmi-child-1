@@ -60,7 +60,8 @@ export function createApp() {
     origin: [...defaultOrigins, ...configOrigins], // Merge lists
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    
+     allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
     optionsSuccessStatus: 204,
   };
 
