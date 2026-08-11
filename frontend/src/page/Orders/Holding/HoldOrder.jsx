@@ -37,6 +37,10 @@ export default function HoldOrder({ filter }) {
   const apiBase = import.meta.env.VITE_REACT_APP_API_URL || "";
   const token = localStorage.getItem("token") || null;
 
+  const userString = localStorage.getItem('loggedInUser');
+  const userObject = userString ? JSON.parse(userString) : {};
+  const userRole = userObject.role;
+
   // Segment map no longer needed - using instrument_token directly
 
   const handleOrderSelect = (orderData) => {
@@ -93,6 +97,36 @@ export default function HoldOrder({ filter }) {
       }
     } catch (err) {
       console.error("Exit failed", err);
+    } finally {
+      setIsProcessingId(null);
+    }
+  };
+
+  const handleRestrictOrder = async (data) => {
+    if (isProcessingId) return;
+    setIsProcessingId(data._id || data.id);
+    try {
+      const payload = {
+        broker_id_str: brokerId,
+        customer_id_str: customerId,
+        order_id: data._id,
+        order_status: "RESTRICTED",
+        came_From: "Hold",
+        closed_at: new Date().toISOString()
+      };
+
+      const res = await fetch(`${apiBase.replace(/\/$/, "")}/api/orders/updateOrder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        window.dispatchEvent(new CustomEvent('orders:changed'));
+        fetchInstrumentData();
+      }
+    } catch (err) {
+      console.error("Restriction failed", err);
     } finally {
       setIsProcessingId(null);
     }
@@ -523,14 +557,27 @@ export default function HoldOrder({ filter }) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3">
-                  <button
-                    onClick={() => handleOrderSelect(data)}
-                    className="w-full py-3.5 bg-[#3b82f6] text-white text-[11px] font-black uppercase tracking-[2px] rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all"
-                  >
-                    Modify
-                  </button>
+              {/* Action Buttons - Only visible for brokers */}
+              {userRole === 'broker' && (
+              <div className="flex flex-col gap-2 w-full">
+                  {/* Row 1: Modify & Restrict */}
+                  <div className="flex gap-2 w-full">
+                      <button
+                        onClick={() => handleOrderSelect(data)}
+                        className="w-full py-3.5 bg-[#3b82f6] text-white text-[11px] font-black uppercase tracking-[2px] rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all"
+                      >
+                        Modify
+                      </button>
+                      <button
+                        onClick={() => handleRestrictOrder(data)}
+                        disabled={isProcessingId === (data._id || data.id)}
+                        className={`w-full py-3.5 bg-amber-500 text-white text-[11px] font-black uppercase tracking-[2px] rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all ${isProcessingId === (data._id || data.id) ? 'opacity-50' : ''}`}
+                      >
+                        Restrict
+                      </button>
+                  </div>
+
+                  {/* Row 2: Exit */}
                   <button
                     onClick={() => handleSingleExit(data)}
                     disabled={isProcessingId === (data._id || data.id)}
@@ -539,11 +586,14 @@ export default function HoldOrder({ filter }) {
                     {isProcessingId === (data._id || data.id) ? 'Exiting...' : 'Exit'}
                   </button>
               </div>
+              )}
 
-              {/* Brokerage tag */}
+              {/* Brokerage tag - Only visible for brokers */}
+              {userRole === 'broker' && (
               <div className="mt-3 text-[8px] text-[#808a9d] text-center opacity-40 font-black uppercase tracking-tighter">
                 Est. Brokerage (entry): -{money(brokerageEntry)}
               </div>
+              )}
             </li>
           );
         })}
@@ -558,4 +608,4 @@ export default function HoldOrder({ filter }) {
       )}
     </>
   );
-}
+}

@@ -148,7 +148,6 @@ const postOrder = asyncHandler(async (req, res) => {
   // --------------------------------------------------
 
   // --- SPECIAL LOGIC: DAILY LIMIT FOR MCX ---
-
   if (isMcx) {
     if (body.mcx_limit_percentage !== undefined && body.mcx_limit_percentage !== null) {
       await Fund.updateOne(
@@ -194,10 +193,7 @@ const postOrder = asyncHandler(async (req, res) => {
         }
       },
       {
-        $inc: { 
-          "intraday.used_limit": requiredMargin,
-          "intraday.free_limit": -requiredMargin
-        }
+        $inc: { "intraday.used_limit": requiredMargin }
       },
       { new: true }
     );
@@ -210,10 +206,7 @@ const postOrder = asyncHandler(async (req, res) => {
         "overnight.available_limit": { $gte: requiredMargin }
       },
       {
-        $inc: { 
-          "overnight.available_limit": -requiredMargin,
-          "overnight.free_limit": -requiredMargin
-        }
+        $inc: { "overnight.available_limit": -requiredMargin }
       },
       { new: true }
     );
@@ -292,22 +285,12 @@ const postOrder = asyncHandler(async (req, res) => {
     if (isIntraday) {
       await Fund.updateOne(
         { broker_id_str, customer_id_str },
-        { 
-          $inc: { 
-            "intraday.used_limit": -requiredMargin,
-            "intraday.free_limit": requiredMargin
-          } 
-        }
+        { $inc: { "intraday.used_limit": -requiredMargin } }
       );
     } else {
       await Fund.updateOne(
         { broker_id_str, customer_id_str },
-        { 
-          $inc: { 
-            "overnight.available_limit": requiredMargin,
-            "overnight.free_limit": requiredMargin
-          } 
-        }
+        { $inc: { "overnight.available_limit": requiredMargin } }
       );
     }
 
@@ -462,6 +445,70 @@ const updateOrder = asyncHandler(async (req, res) => {
 
     const existingIsIntraday = String(existing.product).trim().toUpperCase() === 'MIS';
 
+    // Transition from RESTRICTED to OPEN: check and block margin again
+    if (update.order_status === 'OPEN' && existing.order_status === 'RESTRICTED') {
+      const calcPrice = existing.price;
+      const marginToDeduct = existing.quantity * calcPrice;
+
+      if (marginToDeduct > 0) {
+        let availableLimit = 0;
+        let currentUsed = 0;
+
+        if (isIntraday) {
+          availableLimit = fund.intraday.available_limit;
+          currentUsed = fund.intraday.used_limit;
+        } else {
+          availableLimit = fund.overnight.available_limit;
+          currentUsed = 0;
+        }
+
+        const freeLimit = availableLimit - currentUsed;
+
+        if (marginToDeduct > freeLimit) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient Funds to Re-open! Required: ${marginToDeduct.toFixed(2)}, Available: ${freeLimit.toFixed(2)}`
+          });
+        }
+
+        // Option limit check
+        const exSymUpper = String(existing.symbol).toUpperCase();
+        const isOption = (exSymUpper.endsWith("CE") || exSymUpper.endsWith("PE") || exSymUpper.endsWith("CALL") || exSymUpper.endsWith("PUT"));
+        if (isOption) {
+          await resetOptionUsageIfNewDay(existing.broker_id_str, existing.customer_id_str);
+          const freshFund = await Fund.findOne({ broker_id_str: existing.broker_id_str, customer_id_str: existing.customer_id_str });
+          const limitCheck = checkOptionLimit(freshFund || fund, currentProduct, marginToDeduct);
+          if (!limitCheck.allowed) {
+            return res.status(400).json({ success: false, message: limitCheck.message });
+          }
+          updateOptionUsage(freshFund || fund, currentProduct, marginToDeduct);
+          if (freshFund) await freshFund.save();
+        }
+
+        // MCX limit check
+        const isMcx = String(existing.segment).trim().toUpperCase().includes("MCX");
+        if (isMcx) {
+          await resetMcxUsageIfNewDay(existing.broker_id_str, existing.customer_id_str);
+          const freshFund = await Fund.findOne({ broker_id_str: existing.broker_id_str, customer_id_str: existing.customer_id_str });
+          const limitCheck = checkMcxLimit(freshFund || fund, currentProduct, marginToDeduct);
+          if (!limitCheck.allowed) {
+            return res.status(400).json({ success: false, message: limitCheck.message });
+          }
+          updateMcxUsage(freshFund || fund, currentProduct, marginToDeduct);
+          if (freshFund) await freshFund.save();
+        }
+
+        // Block margin again
+        if (isIntraday) {
+          fund.intraday.used_limit += marginToDeduct;
+        } else {
+          fund.overnight.available_limit -= marginToDeduct;
+        }
+
+        update.margin_blocked = marginToDeduct;
+      }
+    }
+
 
     if (update.quantity && update.quantity > existing.quantity && existing.order_status !== 'CLOSED') {
 
@@ -572,7 +619,7 @@ const updateOrder = asyncHandler(async (req, res) => {
     }
 
 
-    else if (update.order_status === 'CLOSED' && existing.order_status !== 'CLOSED') {
+    else if ((update.order_status === 'CLOSED' || update.order_status === 'RESTRICTED') && existing.order_status !== 'CLOSED' && existing.order_status !== 'RESTRICTED') {
       const marginToRelease = existing.margin_blocked || (existing.price * existing.quantity);
 
       if (marginToRelease > 0) {
@@ -584,31 +631,26 @@ const updateOrder = asyncHandler(async (req, res) => {
         }
       }
 
-      // --- 📈 AUTO P&L CALCULATION ---
-      const entryPrice = existing.price;
-      const exitPrice = update.closed_ltp || closed_ltp || existing.closed_ltp;
-      const quantity = existing.quantity;
+      // --- 📈 AUTO P&L CALCULATION (ONLY FOR CLOSED, NOT RESTRICTED) ---
+      if (update.order_status === 'CLOSED') {
+        const entryPrice = existing.price;
+        const exitPrice = update.closed_ltp || closed_ltp || existing.closed_ltp;
+        const quantity = existing.quantity;
 
-      if (exitPrice > 0) {
-        let pnl = 0;
-        if (existing.side === 'BUY') {
-          pnl = (exitPrice - entryPrice) * quantity;
-        } else {
-          pnl = (entryPrice - exitPrice) * quantity;
+        if (exitPrice > 0) {
+          let pnl = 0;
+          if (existing.side === 'BUY') {
+            pnl = (exitPrice - entryPrice) * quantity;
+          } else {
+            pnl = (entryPrice - exitPrice) * quantity;
+          }
+          // fund.net_pnl = (fund.net_pnl || 0) + pnl;
+          console.log(`[updateOrder] P&L Calculated: ${pnl.toFixed(2)} (Side: ${existing.side}, Entry: ${entryPrice}, Exit: ${exitPrice}, Qty: ${quantity})`);
         }
-        fund.net_pnl = (fund.net_pnl || 0) + pnl;
-        console.log(`[updateOrder] P&L Calculated: ${pnl.toFixed(2)} (Side: ${existing.side}, Entry: ${entryPrice}, Exit: ${exitPrice}, Qty: ${quantity})`);
       }
 
       // Clear margin on DB as well
       update.margin_blocked = 0;
-    }
-
-    if (fund.intraday) {
-      fund.intraday.free_limit = Math.max(0, (fund.intraday.available_limit || 0) - (fund.intraday.used_limit || 0));
-    }
-    if (fund.overnight) {
-      fund.overnight.free_limit = Math.max(0, (fund.overnight.available_limit || 0) - (fund.overnight.used_limit || 0));
     }
 
     await fund.save();
@@ -731,8 +773,7 @@ const exitAllOpenOrder = asyncHandler(async (req, res) => {
     // Update fund in one save (release all margin at once)
     fund.intraday = fund.intraday || { used_limit: 0, available_limit: 0 };
     fund.intraday.used_limit = Math.max(0, Number(fund.intraday.used_limit || 0) - totalMarginToRelease);
-    fund.intraday.free_limit = Math.max(0, (fund.intraday.available_limit || 0) - fund.intraday.used_limit);
-    fund.net_pnl = (fund.net_pnl || 0) + totalPnl;
+    // fund.net_pnl = (fund.net_pnl || 0) + totalPnl;
     await fund.save();
 
   } catch (err) {
@@ -778,10 +819,8 @@ const deleteOrder = asyncHandler(async (req, res) => {
         const isIntraday = String(order.product).trim().toUpperCase() === 'MIS';
         if (isIntraday) {
           fund.intraday.used_limit = Math.max(0, (fund.intraday.used_limit || 0) - order.margin_blocked);
-          fund.intraday.free_limit = Math.max(0, (fund.intraday.available_limit || 0) - fund.intraday.used_limit);
         } else {
           fund.overnight.available_limit = (fund.overnight.available_limit || 0) + order.margin_blocked;
-          fund.overnight.free_limit = Math.max(0, (fund.overnight.available_limit || 0) - (fund.overnight.used_limit || 0));
         }
         await fund.save();
       }
@@ -808,9 +847,9 @@ const deleteAllClosedOrders = asyncHandler(async (req, res) => {
       order_status: "CLOSED"
     });
 
-    return res.status(200).json({
-      success: true,
-      message: `${result.deletedCount} orders deleted successfully`
+    return res.status(200).json({ 
+      success: true, 
+      message: `${result.deletedCount} orders deleted successfully` 
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to delete all orders" });
@@ -818,7 +857,7 @@ const deleteAllClosedOrders = asyncHandler(async (req, res) => {
 });
 
 const updateClosedOrderPrices = asyncHandler(async (req, res) => {
-  const { order_id, price, closed_ltp, closed_at, placed_at } = req.body;
+  const { order_id, price, closed_ltp, closed_at, placed_at, quantity } = req.body;
 
   if (!order_id) {
     return res.status(400).json({ success: false, message: "Order ID required" });
@@ -832,20 +871,27 @@ const updateClosedOrderPrices = asyncHandler(async (req, res) => {
 
   // Update logic: Only update if new values are provided
   if (price !== undefined && price !== null) {
-    order.price = Number(price);
-    order.average_price = Number(price); // Usually same for manual correction
+      order.price = Number(price);
+      order.average_price = Number(price); // Usually same for manual correction
   }
 
   if (closed_ltp !== undefined && closed_ltp !== null) {
-    order.closed_ltp = Number(closed_ltp);
+      order.closed_ltp = Number(closed_ltp);
   }
 
   if (closed_at !== undefined && closed_at !== null) {
-    order.closed_at = closed_at;
+      order.closed_at = closed_at;
   }
 
   if (placed_at !== undefined && placed_at !== null) {
-    order.placed_at = placed_at;
+      order.placed_at = placed_at;
+  }
+
+  if (quantity !== undefined && quantity !== null) {
+      const newQty = Number(quantity);
+      order.quantity = newQty;
+      const lotSize = order.lot_size || 1;
+      order.lots = Math.ceil(newQty / lotSize);
   }
 
   // We are NOT recalculating funds here as this is a manual correction for CLOSED orders.

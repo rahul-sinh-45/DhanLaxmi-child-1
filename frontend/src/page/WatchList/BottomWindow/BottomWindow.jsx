@@ -265,7 +265,7 @@ function BottomWindow({
 
 
         {/* Header - Always Visible */}
-        <div className="flex justify-between items-center p-4 border-b border-[#2a2e39] bg-[#1e222d]">
+        <div className="flex justify-between items-center p-4 border-b border-[var(--border-color)] bg-[var(--bg-card)]">
 
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {(viewMode === 'Order' || viewMode === 'MarketDepth' || viewMode === 'OptionChain' || viewMode === 'Chart') && (
