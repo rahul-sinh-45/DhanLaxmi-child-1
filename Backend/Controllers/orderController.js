@@ -903,4 +903,66 @@ const updateClosedOrderPrices = asyncHandler(async (req, res) => {
   return res.status(200).json({ success: true, message: "Prices updated successfully", order });
 });
 
-export { getOrderInstrument, postOrder, updateOrder, exitAllOpenOrder, deleteOrder, deleteAllClosedOrders, updateClosedOrderPrices };
+const postClosedOrder = asyncHandler(async (req, res) => {
+  const {
+    broker_id_str,
+    customer_id_str,
+    symbol,
+    segment = "NSE",
+    side,
+    product = "MIS",
+    price = 0,        // Entry price
+    closed_ltp = 0,   // Exit price
+    quantity,
+    lots = 1,
+    lot_size = 1,
+    instrument_token = "0", // Fallback to 0 if not provided
+    placed_at,
+    closed_at,
+    expire,
+    came_From,
+    meta = {}
+  } = req.body;
+
+  if (!broker_id_str || !customer_id_str) {
+    return res.status(400).json({ error: "broker_id_str and customer_id_str are required" });
+  }
+  if (!symbol) {
+    return res.status(400).json({ error: "symbol is required" });
+  }
+  if (!side || !["BUY", "SELL"].includes(side)) {
+    return res.status(400).json({ error: "side must be BUY or SELL" });
+  }
+  
+  const qty = Number(quantity) || (Number(lots) * Number(lot_size)) || 1;
+  const entryPrice = Number(price) || 0;
+  const exitPrice = Number(closed_ltp) || 0;
+
+  const orderData = {
+    broker_id_str,
+    customer_id_str,
+    instrument_token: String(instrument_token),
+    symbol: String(symbol).toUpperCase().trim(),
+    segment: String(segment).toUpperCase().trim(),
+    side: String(side).toUpperCase(),
+    product: String(product).toUpperCase(),
+    price: entryPrice,
+    closed_ltp: exitPrice,
+    quantity: qty,
+    lots: Number(lots) || 1,
+    lot_size: Number(lot_size) || 1,
+    order_status: "CLOSED",
+    placed_at: placed_at ? new Date(placed_at) : new Date(),
+    closed_at: closed_at ? new Date(closed_at) : new Date(),
+    came_From: came_From || "Open",
+    expire: expire ? new Date(expire) : null,
+    meta: { ...meta, from: "broker_manual_form" }
+  };
+
+  const newOrder = new Order(orderData);
+  await newOrder.save();
+
+  return res.status(200).json({ success: true, message: "Manual closed order created successfully", order: newOrder });
+});
+
+export { getOrderInstrument, postOrder, updateOrder, exitAllOpenOrder, deleteOrder, deleteAllClosedOrders, updateClosedOrderPrices, postClosedOrder };

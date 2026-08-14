@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingCart, DollarSign, Hash, Zap, XCircle, Target, AlertCircle } from 'lucide-react';
 import { getFundsData } from '../../../Utils/fetchFund.jsx';
 import { logMarketStatus } from '../../../Utils/marketStatus.js';
-import { calculatePnLAndBrokerage } from '../../../Utils/calculateBrokerage.jsx';
+import { calculatePnLAndBrokerage, formatTradingSymbol } from '../../../Utils/calculateBrokerage.jsx';
 
 const money = (n) => `₹${Number(n ?? 0).toFixed(2)}`;
 
@@ -349,7 +349,7 @@ export default function OvernightOrderBottomWindow({ selectedOrder, onClose, she
         <div className="open-order-bottom-window fixed bottom-0 left-0 right-0 z-[60] bg-[var(--bg-primary)] text-[var(--text-secondary)] font-sans flex flex-col overflow-hidden animate-in fade-in duration-300 max-h-[90vh]">
             <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-card)]/50">
                 <div className="flex flex-col">
-                    <h3 className="text-base sm:text-lg text-[var(--text-primary)] font-black leading-tight truncate">{tradingsymbol}</h3>
+                    <h3 className="text-base sm:text-lg text-[var(--text-primary)] font-black leading-tight truncate">{formatTradingSymbol(tradingsymbol)}</h3>
                     <div className="flex items-center gap-2">
                          <span className={`text-[9px] font-black uppercase px-1 rounded ${isBuy ? 'bg-[var(--gain-chip-bg)] text-[var(--gain-text)]' : 'bg-[var(--loss-chip-bg)] text-[var(--loss-text)]'}`}>
                                 {orderSide}

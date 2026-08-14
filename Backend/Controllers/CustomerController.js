@@ -104,7 +104,7 @@ const getBrokerCustomers = asyncHandler(async (req, res) => {
     name: customer.name,
     password : customer.password,
     joining_date: formatDate(customer.createdAt), 
-    status: customer.status || 'Active',
+    status: customer.is_banned ? 'Banned' : 'Active',
     profile_photo: customer.profile_photo || null,
   }));
 
@@ -116,7 +116,7 @@ const getBrokerCustomers = asyncHandler(async (req, res) => {
     count: customers.length,
     brokerDetails: brokerDetails ? {
         name: brokerDetails.name,
-        organizationName: brokerDetails.organization_name || 'DhanLaxmi',
+        organizationName: brokerDetails.organization_name || 'SHIVALIK',
         login_id: brokerDetails.login_id
     } : null
   });
@@ -757,6 +757,27 @@ const updateBrokerJobbing = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Toggle Ban status for a Customer
+// @route   POST /api/auth/toggle-ban-customer/:id
+const toggleBanCustomer = asyncHandler(async (req, res) => {
+  const brokerIdFromToken = req.user._id;
+  const customerId = req.params.id;
+
+  const customer = await CustomerModel.findOne({ customer_id: customerId, attached_broker_id: brokerIdFromToken });
+  if (!customer) {
+    return res.status(404).json({ success: false, message: 'Customer not found or not linked to this broker.' });
+  }
+
+  customer.is_banned = !customer.is_banned;
+  await customer.save();
+
+  res.status(200).json({
+    success: true,
+    message: `Customer account has been ${customer.is_banned ? 'banned' : 'unbanned'} successfully.`,
+    is_banned: customer.is_banned
+  });
+});
+
 export { 
   addCustomer, 
   getBrokerCustomers, 
@@ -766,5 +787,6 @@ export {
   permanentDeleteCustomer,
   uploadProfilePhoto,
   getCustomerDetails,
-  updateBrokerJobbing
+  updateBrokerJobbing,
+  toggleBanCustomer
 };

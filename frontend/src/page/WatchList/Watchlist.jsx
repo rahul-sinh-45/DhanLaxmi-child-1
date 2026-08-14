@@ -11,6 +11,8 @@ import { logMarketStatus } from '../../Utils/marketStatus';
 import RiskDisclosureModal from './RiskDisclosureModal';
 
 
+import { formatTradingSymbol } from "../../Utils/calculateBrokerage.jsx";
+
 // --- Index Card (Matches image) ---
 const IndexCard = ({ name, price, change, onClick }) => {
   const [flashColor, setFlashColor] = useState("");
@@ -162,8 +164,8 @@ const SwipeableWatchlistItem = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-[#787b86] dark:text-[#787b86] block truncate font-medium">
-              {item.tradingSymbol} • {item.exchange}
+             <span className="text-[10px] text-[#787b86] dark:text-[#787b86] block truncate font-medium">
+              {formatTradingSymbol(item.tradingSymbol)} • {item.exchange}
             </span>
           </div>
           <div className="text-right flex-shrink-0">
@@ -1066,7 +1068,7 @@ function Watchlist() {
   const userString = localStorage.getItem('loggedInUser');
   const userObject = userString ? JSON.parse(userString) : {};
   const userRole = userObject.role;
-  const organizationName = localStorage.getItem('organizationName') || 'DhanLaxmi';
+  const organizationName = localStorage.getItem('organizationName') || 'SHIVALIK';
   return (
     <div className="w-full h-full bg-[var(--bg-primary)] md:w-1/2 lg:w-3/12 md:border-r border-[var(--border-light)] flex flex-col relative min-h-0">
 

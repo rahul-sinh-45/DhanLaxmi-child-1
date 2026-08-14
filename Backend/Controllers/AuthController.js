@@ -59,7 +59,7 @@ const handleUserLogin = asyncHandler(async (req, res) => {
   let role = '';
   let attachedMongoBrokerId = null;       // Broker का Mongo _id (customer के case में attached broker)
   let associatedBrokerStringId = null;    // Broker का 10-digit login_id (string)
-  let organizationName = "DhanLaxmi";     // Default Organization Name
+  let organizationName = "SHIVALIK";     // Default Organization Name
   let parentId = null;
 
   // 1) Try Broker/Admin first (by login_id)
@@ -101,6 +101,13 @@ const handleUserLogin = asyncHandler(async (req, res) => {
 
   if (!user) {
     return res.status(404).json({ success: false, message: 'Invalid ID. User not found.' });
+  }
+
+  if (user.is_banned) {
+    return res.status(403).json({
+      success: false,
+      message: role === 'customer' ? 'Your account has been banned. Contact your broker.' : 'Your broker account has been banned. Contact Super Broker.'
+    });
   }
 
   const storedPassword = user.password;

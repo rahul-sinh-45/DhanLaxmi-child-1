@@ -3,6 +3,7 @@ import { X, TrendingDown, TrendingUp, ArrowLeft } from 'lucide-react';
 import { logMarketStatus } from '../../../Utils/marketStatus.js'
 import { getFundsData } from '../../../Utils/fetchFund.jsx';
 import { useMarketData } from '../../../contexts/MarketDataContext';
+import { formatTradingSymbol } from '../../../Utils/calculateBrokerage.jsx';
 
 const OptionStrikeBottomWindow = ({
     isOpen,
@@ -245,7 +246,7 @@ const OptionStrikeBottomWindow = ({
         const typeStr = (optionType === 'CE' || optionType === 'CALL') ? 'CE' : 'PE';
         return `${symbol}${expiryStr}${strikePrice}${typeStr}`.toUpperCase();
     };
-    const instrumentName = getInstrumentName();
+    const instrumentName = formatTradingSymbol(getInstrumentName());
 
     const formatExpiryFull = (dateStr) => {
         if (!dateStr) return '';

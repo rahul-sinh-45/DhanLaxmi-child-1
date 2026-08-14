@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Zap, XCircle, Pencil, Check, Save, TrendingUp, TrendingDown, Plus, Minus, ChevronDown, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { getFundsData } from '../../../Utils/fetchFund.jsx';
 import { logMarketStatus } from '../../../Utils/marketStatus.js';
-import { calculatePnLAndBrokerage } from '../../../Utils/calculateBrokerage.jsx';
+import { calculatePnLAndBrokerage, formatTradingSymbolNew } from '../../../Utils/calculateBrokerage.jsx';
 import LockedButtonWrapper from '../../../components/LockedButtonWrapper';
 import { usePermissions } from '../../../contexts/PermissionsContext.jsx';
 
@@ -302,7 +302,7 @@ export default function OpenOrderBottomWindow({ selectedOrder, onClose, sheetDat
         <div className="fixed inset-0 z-[60] bg-[var(--bg-primary)] text-[var(--text-secondary)] font-sans flex flex-col overflow-hidden animate-in fade-in duration-300">
             <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-card)]/50">
                 <div className="flex flex-col">
-                    <h3 className="text-lg font-black text-[var(--text-primary)] leading-tight">{tradingsymbol}</h3>
+                    <h3 className="text-lg font-black text-[var(--text-primary)] leading-tight">{formatTradingSymbolNew(tradingsymbol)}</h3>
                     <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-black uppercase px-1 rounded ${isBuy ? 'bg-[var(--gain-chip-bg)] text-[var(--gain-text)]' : 'bg-[var(--loss-chip-bg)] text-[var(--loss-text)]'}`}>
                             {orderSide}
