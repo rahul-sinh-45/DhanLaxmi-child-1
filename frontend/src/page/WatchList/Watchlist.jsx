@@ -355,6 +355,17 @@ function Watchlist() {
   // Helper to get active context
   const getActiveContext = () => {
     try {
+      const userString = localStorage.getItem('loggedInUser');
+      const userObject = userString ? JSON.parse(userString) : {};
+      
+      if (userObject.role === 'customer') {
+        const globalBrokerId = localStorage.getItem('associatedBrokerStringId');
+        return {
+          brokerId: globalBrokerId,
+          customerId: userObject.id
+        };
+      }
+      
       const raw = localStorage.getItem('activeContext');
       const parsed = raw ? JSON.parse(raw) : {};
       return {
@@ -768,7 +779,7 @@ function Watchlist() {
         console.log(`[Watchlist Load] API calls completed in ${fetchElapsed.toFixed(0)}ms`);
 
         // Process indexes - Kite format
-        const priorityIndexes = ["NIFTY 50", "NIFTY BANK", "SENSEX", "BANKEX", "NIFTY FIN SERVICE", "NIFTY MID SELECT"];
+        const priorityIndexes = ["NIFTY 50", "NIFTY BANK", "SENSEX", "BANKEX", "NIFTY FIN SERVICE", "NIFTY MID SELECT", "NIFTY MIDCAP 100"];
         const indexInstrumentsRaw = (indexRes || []).sort((a, b) => {
           const aName = (a.tradingsymbol || a.name || "").toUpperCase();
           const bName = (b.tradingsymbol || b.name || "").toUpperCase();
@@ -1068,7 +1079,7 @@ function Watchlist() {
   const userString = localStorage.getItem('loggedInUser');
   const userObject = userString ? JSON.parse(userString) : {};
   const userRole = userObject.role;
-  const organizationName = localStorage.getItem('organizationName') || 'SHIVALIK';
+  const organizationName = localStorage.getItem('organizationName') || 'DHANLAXMI';
   return (
     <div className="w-full h-full bg-[var(--bg-primary)] md:w-1/2 lg:w-3/12 md:border-r border-[var(--border-light)] flex flex-col relative min-h-0">
 
@@ -1372,6 +1383,7 @@ function Watchlist() {
               let shortName = rawName;
               if (rawName === 'NIFTY 50') shortName = 'NIFTY';
               else if (rawName === 'NIFTY BANK') shortName = 'BANKNIFTY';
+              else if (rawName === 'NIFTY MIDCAP 100' || rawName === 'NIFTY MID SELECT') shortName = 'MIDCPNIFTY';
               else if (rawName.startsWith('NIFTY ')) shortName = rawName.replace('NIFTY ', '');
               return (
                 <IndexCard

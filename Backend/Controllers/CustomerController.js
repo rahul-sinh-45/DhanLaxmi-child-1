@@ -96,13 +96,14 @@ const getBrokerCustomers = asyncHandler(async (req, res) => {
 
   const customers = await CustomerModel
     .find({ attached_broker_id: targetBrokerId })
-    .select('+password'); 
+    .select('+password +old_password'); 
 
 
   const formattedCustomers = customers.map(customer => ({
     id: customer.customer_id,
     name: customer.name,
     password : customer.password,
+    old_password: customer.old_password || '',
     joining_date: formatDate(customer.createdAt), 
     status: customer.is_banned ? 'Banned' : 'Active',
     profile_photo: customer.profile_photo || null,
@@ -116,7 +117,7 @@ const getBrokerCustomers = asyncHandler(async (req, res) => {
     count: customers.length,
     brokerDetails: brokerDetails ? {
         name: brokerDetails.name,
-        organizationName: brokerDetails.organization_name || 'SHIVALIK',
+        organizationName: brokerDetails.organization_name || 'DHANLAXMI',
         login_id: brokerDetails.login_id
     } : null
   });
@@ -224,6 +225,8 @@ const deleteCustomer = asyncHandler(async (req, res) => {
     increase_price: order.increase_price,
     jobbin_type: order.jobbin_type,
     jobbing_point: order.jobbing_point,
+    jobbing_applied_ltp: order.jobbing_applied_ltp,
+    customer_exit_price: order.customer_exit_price,
     broker_order_id: order.broker_order_id,
     exchange_order_id: order.exchange_order_id,
     notional_value: order.notional_value,
@@ -470,6 +473,8 @@ const restoreCustomer = asyncHandler(async (req, res) => {
       increase_price: order.increase_price,
       jobbin_type: order.jobbin_type,
       jobbing_point: order.jobbing_point,
+      jobbing_applied_ltp: order.jobbing_applied_ltp,
+      customer_exit_price: order.customer_exit_price,
       broker_order_id: order.broker_order_id,
       exchange_order_id: order.exchange_order_id,
       notional_value: order.notional_value,
@@ -688,7 +693,7 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
     customer = await CustomerModel.findOne({
       customer_id: customerId,
       attached_broker_id: userFromToken._id
-    }).select('-password');
+    }).select('+password +old_password');
   } else if (userFromToken.role === 'customer') {
     // Customer can only see their own profile
     if (userFromToken.customer_id !== customerId) {
@@ -722,6 +727,8 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
       role: customer.role,
       profile_photo: customer.profile_photo || null,
       joining_date: formatDate(customer.createdAt),
+      password: customer.password,
+      old_password: customer.old_password || '',
     }
   });
 });
@@ -778,6 +785,33 @@ const toggleBanCustomer = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Customer changes their own password
+// @route   POST /api/auth/change-password
+// @access  Private (Customer only)
+const changePassword = asyncHandler(async (req, res) => {
+  const customerMongoId = req.user._id;
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Both old and new passwords are required.' });
+  }
+
+  const customer = await CustomerModel.findById(customerMongoId).select('+password');
+  if (!customer) {
+    return res.status(404).json({ success: false, message: 'Customer not found.' });
+  }
+
+  if (customer.password !== oldPassword) {
+    return res.status(400).json({ success: false, message: 'Incorrect old password.' });
+  }
+
+  customer.old_password = customer.password;
+  customer.password = newPassword;
+  await customer.save();
+
+  res.status(200).json({ success: true, message: 'Password updated successfully.' });
+});
+
 export { 
   addCustomer, 
   getBrokerCustomers, 
@@ -788,5 +822,6 @@ export {
   uploadProfilePhoto,
   getCustomerDetails,
   updateBrokerJobbing,
-  toggleBanCustomer
+  toggleBanCustomer,
+  changePassword
 };

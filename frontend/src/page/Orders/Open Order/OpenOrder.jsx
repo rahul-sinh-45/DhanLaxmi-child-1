@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import OpenOrderBottomWindow from "./OpenOderBottomWindow.jsx";
 import { calculatePnLAndBrokerage, formatTradingSymbolNew } from "../../../Utils/calculateBrokerage.jsx";
 import LockedButtonWrapper from "../../../components/LockedButtonWrapper";
+import { logMarketStatus } from "../../../Utils/marketStatus.js";
 
 const money = (n) => `₹${Number(n ?? 0).toFixed(2)}`;
 
@@ -57,9 +58,15 @@ export default function OpenOrder({ filter }) {
       const ltp = Number(data.snapshot?.ltp || data.ltp || data.price || 0);
       const isBuy = String(data.side || "").toUpperCase() === "BUY";
       const jpValue = Number(data.jobbing_point || 0);
-      let closedLtp = ltp;
-      if (jpValue > 0 && closedLtp > 0) {
-        closedLtp = isBuy ? closedLtp - jpValue : closedLtp + jpValue;
+      let closedLtp;
+      if (Number(data.customer_exit_price || 0) > 0) {
+        closedLtp = Number(data.customer_exit_price);
+      } else {
+        const refLtp = Number(data.jobbing_applied_ltp || 0) || ltp;
+        closedLtp = refLtp;
+        if (jpValue > 0 && closedLtp > 0) {
+          closedLtp = isBuy ? closedLtp - jpValue : closedLtp + jpValue;
+        }
       }
 
       const payload = {
@@ -512,12 +519,8 @@ export default function OpenOrder({ filter }) {
           const avg = Number(data.price ?? 0);
           const qty = Number(data?.quantity ?? 0);
 
-          // Apply Jobbing Point deduction to the current LTP for PnL calculation
-          const jpValue = Number(data.jobbing_point || 0);
+          // (Jobbing Point applied ONLY upon execution of Exit, not on Display)
           let pnlLtp = ltp;
-          if (jpValue > 0 && pnlLtp > 0) {
-              pnlLtp = isBuy ? pnlLtp - jpValue : pnlLtp + jpValue;
-          }
 
           const {
             totalBrokerage,
@@ -643,15 +646,17 @@ export default function OpenOrder({ filter }) {
                       </button>
                     </LockedButtonWrapper>
 
-                    <LockedButtonWrapper featureId="cancel_order" className="flex-1">
-                      <button
-                        onClick={() => handleSingleExit(data)}
-                        disabled={isProcessingId === data._id}
-                        className={`w-full py-3.5 bg-[#f23645] text-white text-[11px] font-black uppercase tracking-[2px] rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all ${isProcessingId === data._id ? 'opacity-50' : ''}`}
-                      >
-                        {isProcessingId === data._id ? 'Exiting...' : 'Exit'}
-                      </button>
-                    </LockedButtonWrapper>
+                    {(userRole === 'broker' || logMarketStatus(data.segment)) && (
+                      <LockedButtonWrapper featureId="cancel_order" className="flex-1">
+                        <button
+                          onClick={() => handleSingleExit(data)}
+                          disabled={isProcessingId === data._id}
+                          className={`w-full py-3.5 bg-[#f23645] text-white text-[11px] font-black uppercase tracking-[2px] rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all ${isProcessingId === data._id ? 'opacity-50' : ''}`}
+                        >
+                          {isProcessingId === data._id ? 'Exiting...' : 'Exit'}
+                        </button>
+                      </LockedButtonWrapper>
+                    )}
                   </div>
                 )}
               </div>
